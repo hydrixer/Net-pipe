@@ -3,6 +3,7 @@ import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.InvalidAlgorithmParameterException;
@@ -56,8 +57,10 @@ public class SessionCipher {
      * Attach OutputStream to which encrypted data will be written.
      * Return result as a CipherOutputStream instance.
      */
-    CipherOutputStream openEncryptedOutputStream(OutputStream os) {
-        return new CipherOutputStream(os,mycipher);
+    CipherOutputStream openEncryptedOutputStream(OutputStream os) throws InvalidAlgorithmParameterException, InvalidKeyException, NoSuchPaddingException, NoSuchAlgorithmException {
+        Cipher cipher = Cipher.getInstance("AES/CTR/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(mykey.getKeyBytes(),"AES"), new IvParameterSpec(iv));
+        return new CipherOutputStream(os, cipher);
     }
 
     /*
@@ -65,7 +68,9 @@ public class SessionCipher {
      * Return result as a CipherInputStream instance.
      */
 
-    CipherInputStream openDecryptedInputStream(InputStream inputstream) {
-        return new CipherInputStream(inputstream,mycipher);
+    CipherInputStream openDecryptedInputStream(InputStream inputstream) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException {
+        Cipher cipher = Cipher.getInstance("AES/CTR/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(mykey.getKeyBytes(),"AES"), new IvParameterSpec(iv));
+        return new CipherInputStream(inputstream, cipher);
     }
 }

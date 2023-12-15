@@ -8,6 +8,7 @@ import java.security.*;
 import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.sql.Timestamp;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Base64;
 
@@ -88,12 +89,15 @@ public class NetPipeServer {
         HandshakeCrypto verifycrypto = null;
 
         SessionCipher sessionCipher = null;
+        int finished =0;
+        boolean cfinished=false;
 
         //wait Client hello and respond here
         Boolean handshaked = false;
         int stage=0; //this indicates the stage of handshake 0-1-2-3(done)
         while(!handshaked) {
-            HandshakeMessage clientmsg = HandshakeMessage.recv(socket);
+            HandshakeMessage clientmsg = null;
+            clientmsg = HandshakeMessage.recv(socket);
             System.out.println("getmessage:"+clientmsg.getType());
             switch (clientmsg.getType()){
                 case CLIENTHELLO :{
@@ -134,7 +138,7 @@ public class NetPipeServer {
                 }
 
                 case CLIENTFINISHED:{
-                    if (stage != 3){
+                    if (stage != 3 ){
                         System.out.println(stage);
                         return;
                     }
@@ -165,7 +169,10 @@ public class NetPipeServer {
                         System.out.println("Timestamp check failed");
                         return;
                     }
-                    stage++;    //next stage
+                    cfinished=true;
+                    if(finished==1){
+                        handshaked=true;
+                    }
                     break;
                 }
             }
@@ -180,13 +187,15 @@ public class NetPipeServer {
                 stage=2;
             }
 
-            if(stage==4){   //Sfinished
+            if(stage==3 && finished==0){   //Sfinished
                 Sdigest.update(Shello.getBytes());
                 byte[] Sdigestbytes = handshakeCryptoprivate.encrypt(Sdigest.digest());
                 String Sdigeststr = Base64.getEncoder().encodeToString(Sdigestbytes);
 
                 Timestamp Stimestamp = new Timestamp(System.currentTimeMillis());
-                byte[] Stimestampbytes = Stimestamp.toString().getBytes(StandardCharsets.UTF_8);
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+                byte[] Stimestampbytes = Stimestamp.toLocalDateTime().format(formatter).getBytes(StandardCharsets.UTF_8);
                 String Stimestampstr = Base64.getEncoder().encodeToString(handshakeCryptoprivate.encrypt(Stimestampbytes));
 
                 Sfinished.putParameter("Signature",Sdigeststr);
@@ -194,13 +203,14 @@ public class NetPipeServer {
                 Sfinished.send(socket);
 
                 System.out.println("sent server finished");
-                stage=5;
-                handshaked = true;
+                finished++;
+                if(cfinished){
+                    handshaked=true;
+                }
             }
         }
         System.out.println("HANDSHAKE DONE");
         try {
-            sessionCipher = new SessionCipher(new SessionKey(128));
             Forwarder.forwardStreams(System.in, System.out, sessionCipher.openDecryptedInputStream(socket.getInputStream()), sessionCipher.openEncryptedOutputStream(socket.getOutputStream()), socket);
         } catch (IOException ex) {
             System.out.println("Stream forwarding error\n");

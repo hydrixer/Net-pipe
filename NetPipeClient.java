@@ -5,14 +5,12 @@ import javax.crypto.NoSuchPaddingException;
 import java.net.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.SignatureException;
+import java.security.*;
 import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Base64;
 
@@ -75,7 +73,7 @@ public class NetPipeClient {
         HandshakeCrypto verifycrypto = null;
         HandshakeDigest verifydigest = new HandshakeDigest();
 
-        SessionCipher sessionCipher = null;
+        SessionCipher sessionCipher = new SessionCipher(new SessionKey(128));
 
         int stage =0;
         //Client hello here
@@ -114,8 +112,7 @@ public class NetPipeClient {
         HandshakeMessage Csession = new HandshakeMessage(HandshakeMessage.MessageType.SESSION);
         //send session
         if (stage==2){
-            SessionKey sessionKey = new SessionKey(128);
-            sessionCipher = new SessionCipher(sessionKey);
+            SessionKey sessionKey = sessionCipher.getSessionKey();
             byte[] sessionkeybytes = sessionKey.getKeyBytes();
             HandshakeCrypto handshakeCrypto = new HandshakeCrypto(servercert);
 
@@ -140,9 +137,10 @@ public class NetPipeClient {
             byte[] clientdigestbytes = handshakeCryptoprivate.encrypt(clientdigest.digest());
             String clientdigeststr = Base64.getEncoder().encodeToString(clientdigestbytes);
 
-
             Timestamp clienttimestamp = new Timestamp(System.currentTimeMillis());
-            byte[] clienttimestampbytes = clienttimestamp.toString().getBytes(StandardCharsets.UTF_8);
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+            byte[] clienttimestampbytes = clienttimestamp.toLocalDateTime().format(formatter).getBytes(StandardCharsets.UTF_8);
             System.out.println(new String(clienttimestampbytes,StandardCharsets.UTF_8));
             String clienttimestampstr = Base64.getEncoder().encodeToString(handshakeCryptoprivate.encrypt(clienttimestampbytes));
 
@@ -187,15 +185,18 @@ public class NetPipeClient {
                     return;
                 }
             }
+            stage=5;
         }
 
         System.out.println("HANDSHAKE DONE");
 
         try {
-            Forwarder.forwardStreams(System.in, System.out, sessionCipher.openDecryptedInputStream(socket.getInputStream()), sessionCipher.openEncryptedOutputStream(socket.getOutputStream()), socket);
+            Forwarder.forwardStreams(System.in, System.out, sessionCipher.openDecryptedInputStream(socket.getInputStream()),sessionCipher.openEncryptedOutputStream(socket.getOutputStream()), socket);
         } catch (IOException ex) {
             System.out.println("Stream forwarding error\n");
             System.exit(1);
+        } catch (InvalidAlgorithmParameterException e) {
+            throw new RuntimeException(e);
         }
     }
 }
